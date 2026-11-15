@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Gestão de Eventos</title>
+<style>
+:root{--ink:#14213d;--bg:#eef1f5;--card:#fff;--line:#d5dbe4;--acc:#0f766e;--warn:#b45309;--bad:#b91c1c;--mut:#5b6678}
+@media(prefers-color-scheme:dark){:root{--ink:#e8ecf3;--bg:#0f1624;--card:#18223a;--line:#2b3957;--acc:#2dd4bf;--warn:#fbbf24;--bad:#f87171;--mut:#9aa6bd}}
+*{box-sizing:border-box}body{margin:0;font:15px/1.5 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{background:#14213d;color:#fff;padding:14px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+#logo{height:46px;max-width:140px;object-fit:contain;background:#fff;border-radius:6px;padding:4px;display:none}
+header h1{font:600 20px Georgia,serif;margin:0;flex:1}header small{display:block;font:12px "Segoe UI",sans-serif;opacity:.8}
+button,.btn{font:inherit;font-size:13px;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:6px;padding:6px 11px;cursor:pointer}
+header button{background:transparent;color:#fff;border-color:#ffffff55}
+nav{display:flex;gap:4px;flex-wrap:wrap;padding:10px 16px;background:var(--card);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+nav button{border:0;background:none;padding:8px 12px;border-radius:6px}nav button.on{background:var(--acc);color:#fff}
+main{padding:18px;max-width:1200px;margin:auto}
+.kp{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:18px}
+.k{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px 14px}.k b{display:block;font:600 24px Georgia,serif}.k span{color:var(--mut);font-size:13px}
+.box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}.box h2{margin:0 0 8px;font:600 17px Georgia,serif}
+.w{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px}th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;padding:4px 8px}
+td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
+.bad{color:var(--bad);font-weight:600}.ok{color:var(--acc);font-weight:600}
+.al{padding:6px 10px;border-left:4px solid var(--warn);background:var(--bg);margin:5px 0;border-radius:0 6px 6px 0}.al.r{border-color:var(--bad)}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
+.hint{color:var(--mut);font-size:13px}.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
+input.l{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;width:min(520px,100%);background:var(--bg);color:var(--ink)}
+footer{text-align:center;padding:16px}footer button{border:0;background:none;color:var(--mut);text-decoration:underline}
+button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+@media print{header button,nav,.tools,footer{display:none}body{background:#fff;color:#000}}
+</style></head><body>
+<header><img id="logo" alt="Logo">
+<h1 id="ttl">Gestão de Eventos<small id="sub"></small></h1>
+<button id="rf">Atualizar</button><button onclick="print()">Imprimir</button></header>
+<nav id="nav"></nav><main id="m"></main>
+<footer><button id="chg">Trocar planilha conectada</button></footer>
+<script>
+const n=v=>{v=String(v??'').trim();if(v.includes(','))v=v.replace(/\./g,'').replace(',','.');return parseFloat(v)||0};
+const fm=v=>'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const dt=s=>{s=String(s||'').trim();const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:s.slice(0,10)};
+const br=s=>s?s.split('-').reverse().join('/'):'—';
+const sim=v=>/^(sim|true|verdadeiro|x|1)$/i.test(String(v).trim());
+// Aba da planilha -> colunas, na mesma ordem da planilha mestre
+const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic']};
+const V={
+ dashboard:{t:'Dashboard'},
+ eventos:{t:'Planejamento',tab:'Eventos',c:[['nome','Evento'],['data','Data',r=>br(r.data)],['local','Local'],['tipo','Tipo'],['publico','Público previsto'],['etapa','Etapa'],['resp','Responsável'],['nota','Observações']]},
+ orcamento:{t:'Financeiro',tab:'Orcamento',c:[['ev','Evento'],['item','Item'],['orcado','Orçado',r=>fm(n(r.orcado))],['real','Realizado',r=>fm(n(r.real))],['cot','Cotação'],['d','Desvio',r=>{const d=n(r.real)-n(r.orcado);return n(r.orcado)?`<span class="${d>0?'bad':'ok'}">${d>0?'+':''}${fm(d)}</span>`:'—'}]]},
+ fornecedores:{t:'Fornecedores',tab:'Fornecedores',c:[['nome','Fornecedor'],['serv','Serviço'],['ctt','Contato'],['venc','Contrato vence em',r=>br(r.venc)],['nota','Avaliação'],['st','Status']]},
+ equipes:{t:'Equipes',tab:'Equipes',c:[['ev','Evento'],['nome','Pessoa'],['func','Função'],['turno','Turno'],['ctt','Contato']]},
+ operacao:{t:'Operação',tab:'Operacao',c:[['ev','Evento'],['tipo','Tipo'],['tarefa','Tarefa / plano'],['resp','Responsável'],['prazo','Prazo',r=>br(r.prazo)],['ok','Feito',r=>r.ok?'<span class="ok">Sim</span>':'Pendente']]},
+ resultados:{t:'Resultados',tab:'Resultados',c:[['ev','Evento'],['pub','Público real'],['sat','Satisfação'],['custo','Custo total',r=>fm(n(r.custo))],['cpp','Custo por participante',r=>n(r.pub)?fm(n(r.custo)/n(r.pub)):'—'],['lic','Lições aprendidas']]}
+};
+let D=null,cur='dashboard',ID=localStorage.getItem('sheetId')||'',msg='';
+function csv(t){const R=[];let r=[],f='',q=false;for(let i=0;i<t.length;i++){const c=t[i];
+ if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
+ else if(c=='"')q=true;else if(c==','){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);R.push(r);r=[];f=''}else f+=c}
+ if(f||r.length){r.push(f);R.push(r)}return R}
+let seq=0;
+function jq(tab){return new Promise((ok,no)=>{const f='gv'+(++seq)+Date.now(),sc=document.createElement('script');
+ const end=()=>{delete window[f];sc.remove()};
+ window[f]=o=>{end();if(o.status!='ok'){no(new Error('o Google recusou a aba "'+tab+'": '+((o.errors||[{}])[0].detailed_message||(o.errors||[{}])[0].message||'erro desconhecido')));return}
+  ok(o.table.rows.map(r=>(r.c||[]).map(c=>{if(!c||c.v==null)return'';return(typeof c.v=='string'&&/^Date\(/.test(c.v))?(c.f||''):c.v})))};
+ sc.onerror=()=>{end();no(new Error('não consegui abrir a aba "'+tab+'". Confira: (1) o arquivo é uma Planilha Google de verdade (não .xlsx), (2) está compartilhado como "Qualquer pessoa com o link: Leitor", (3) o link está certo, (4) a aba tem esse nome exato'))};
+ sc.src=`https://docs.google.com/spreadsheets/d/${ID}/gviz/tq?headers=1&tqx=responseHandler:${f}&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;document.head.appendChild(sc)})}
+async function load(){msg='Carregando…';draw();
+ try{const out={cfg:{}};
+  (await jq('Config')).forEach(r=>{if(r[0])out.cfg[String(r[0]).trim()]=String(r[1]??'').trim()});
+  for(const [tab,keys] of Object.entries(T)){
+   out[tab]=(await jq(tab)).filter(r=>r.some(x=>String(x).trim())).map(r=>{const o={};keys.forEach((k,i)=>o[k]=String(r[i]??'').trim());
+    if(o.data!==undefined)o.data=dt(o.data);if(o.venc!==undefined)o.venc=dt(o.venc);if(o.prazo!==undefined)o.prazo=dt(o.prazo);if(o.ok!==undefined)o.ok=sim(o.ok);return o})}
+  D=out;out.at=new Date().toLocaleString('pt-BR');localStorage.setItem('cache-'+ID,JSON.stringify(out));msg=''}
+ catch(e){const c=localStorage.getItem('cache-'+ID);if(c){D=JSON.parse(c);msg='Sem conexão com a planilha ('+e.message+'). Mostrando a última atualização ('+D.at+').'}else{D=null;msg='Não consegui ler a planilha: '+e.message+'.'}}
+ draw()}
+function head(){const c=D?.cfg||{},l=document.getElementById('logo');
+ let g=c.logo||'';const m=g.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);if(m&&/drive\.google/.test(g))g=`https://drive.google.com/thumbnail?id=${m[1]||m[2]}&sz=w400`;
+ l.style.display=g?'block':'none';if(g)l.src=g;l.onerror=()=>l.style.display='none';
+ const nome=c.nome||'Legacy School';document.getElementById('ttl').firstChild.nodeValue='Gestão de Eventos – '+nome;
+ document.getElementById('sub').textContent='Responsável: '+(c.responsavel||'Bruno')+(D?.at?' · atualizado em '+D.at:'');document.title='Gestão de Eventos – '+nome}
+function nav(){document.getElementById('nav').innerHTML=Object.entries(V).map(([k,v])=>`<button class="${k==cur?'on':''}" data-m="${k}">${v.t}</button>`).join('')}
+function table(k){const v=V[k],rows=D[v.tab];
+ return`<div class="box"><h2>${v.t}</h2><p class="hint">Somente leitura. Para alterar, edite a aba "${v.tab}" na planilha e clique em Atualizar.</p><div class="w"><table><thead><tr>${v.c.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${v.c.map(c=>`<td>${c[2]?c[2](r):esc(r[c[0]])}</td>`).join('')}</tr>`).join('')||'<tr><td class="hint">Nada cadastrado nesta aba.</td></tr>'}</tbody></table></div></div>`}
+function dash(){const hoje=new Date().toISOString().slice(0,10),lim=new Date(Date.now()+30*864e5).toISOString().slice(0,10);
+ const orc=D.Orcamento.reduce((a,r)=>a+n(r.orcado),0),rea=D.Orcamento.reduce((a,r)=>a+n(r.real),0),prox=D.Eventos.filter(e=>e.data>=hoje).length,al=[];
+ D.Orcamento.forEach(r=>{if(n(r.orcado)&&n(r.real)>n(r.orcado)*1.1)al.push(['r',`Custo acima de 10% do orçado: ${r.ev||'—'} / ${r.item}`])});
+ D.Fornecedores.forEach(f=>{if(f.venc&&f.venc<=lim&&f.st=='Contratado')al.push([f.venc<hoje?'r':'',`Contrato de ${f.nome} ${f.venc<hoje?'vencido':'vence'} em ${br(f.venc)}`])});
+ D.Operacao.forEach(o=>{if(!o.ok&&o.prazo&&o.prazo<hoje)al.push(['r',`Atrasado: ${o.tarefa} (${o.ev||'—'})`])});
+ const prog=D.Eventos.map(e=>{const t=D.Operacao.filter(o=>o.ev==e.nome&&o.tipo=='Checklist'),d=t.filter(o=>o.ok).length;return`<tr><td>${esc(e.nome)}</td><td>${br(e.data)}</td><td>${esc(e.etapa)}</td><td style="min-width:140px"><div class="bar"><i style="width:${t.length?d/t.length*100:0}%"></i></div><span class="hint">${d}/${t.length} itens</span></td></tr>`}).join('');
+ return`<div class="kp"><div class="k"><b>${D.Eventos.length}</b><span>Eventos</span></div><div class="k"><b>${prox}</b><span>Próximos</span></div><div class="k"><b>${fm(orc)}</b><span>Orçado</span></div><div class="k"><b>${fm(rea)}</b><span>Realizado</span></div><div class="k"><b class="${rea>orc&&orc?'bad':'ok'}">${fm(orc-rea)}</b><span>Saldo</span></div></div>
+ <div class="box"><h2>Alertas</h2>${al.map(a=>`<div class="al ${a[0]}">${esc(a[1])}</div>`).join('')||'<p class="hint">Nenhum alerta no momento.</p>'}</div>
+ <div class="box"><h2>Eventos e andamento</h2><div class="w"><table><thead><tr><th>Evento</th><th>Data</th><th>Etapa</th><th>Checklist</th></tr></thead><tbody>${prog||'<tr><td class="hint">Cadastre eventos na aba Eventos da planilha.</td></tr>'}</tbody></table></div></div>`}
+function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
+function draw(){head();nav();const m=document.getElementById('m');
+ if(!ID){m.innerHTML=setup();return}
+ m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?(cur=='dashboard'?dash():table(cur)):'')}
+document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw()}
+ if(t.id=='go'){const m=document.getElementById('lk').value.match(/\/d\/([\w-]+)/)||[0,document.getElementById('lk').value.trim()];if(m[1]){ID=m[1];localStorage.setItem('sheetId',ID);load()}}});
+rf.onclick=()=>ID&&load();
+chg.onclick=()=>{localStorage.removeItem('sheetId');ID='';D=null;msg='';draw()};
+try{const c=localStorage.getItem('cache-'+ID);if(c)D=JSON.parse(c)}catch(e){}
+draw();if(ID){load();setInterval(load,3e5)}
+</script></body></html>
