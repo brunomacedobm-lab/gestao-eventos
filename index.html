@@ -26,6 +26,7 @@ td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
 input.l{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;width:min(520px,100%);background:var(--bg);color:var(--ink)}
 footer{text-align:center;padding:16px}footer button{border:0;background:none;color:var(--mut);text-decoration:underline}
 button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+select{font:inherit;padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);max-width:100%}.wn{color:var(--warn);font-weight:600}td button{border:0;background:none;color:var(--acc);text-decoration:underline;padding:0;text-align:left}.pb{break-inside:avoid}
 @media print{header button,nav,.tools,footer{display:none}body{background:#fff;color:#000}}
 </style></head><body>
 <header><img id="logo" alt="Logo">
@@ -41,9 +42,9 @@ const dt=s=>{s=String(s||'').trim();const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{
 const br=s=>s?s.split('-').reverse().join('/'):'—';
 const sim=v=>/^(sim|true|verdadeiro|x|1)$/i.test(String(v).trim());
 // Aba da planilha -> colunas, na mesma ordem da planilha mestre
-const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic']};
+const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic'],Padrao:['fase','tarefa','dias','tipo'],Briefing:['ev','obj','res','pub','ein','eout','prog','hor','ctt','link','prazo','log','com','apr'],Riscos:['ev','risco','p','i','prev','planob','resp'],Andamento:['ev','item','st','obs'],Modelos:['nome','assunto','texto']};
 const V={
- dashboard:{t:'Dashboard'},
+ dashboard:{t:'Dashboard'},ficha:{t:'Ficha do evento'},comunic:{t:'Comunicação'},
  eventos:{t:'Planejamento',tab:'Eventos',c:[['nome','Evento'],['data','Data',r=>br(r.data)],['local','Local'],['tipo','Tipo'],['publico','Público previsto'],['etapa','Etapa'],['resp','Responsável'],['nota','Observações']]},
  orcamento:{t:'Financeiro',tab:'Orcamento',c:[['ev','Evento'],['item','Item'],['orcado','Orçado',r=>fm(n(r.orcado))],['real','Realizado',r=>fm(n(r.real))],['cot','Cotação'],['d','Desvio',r=>{const d=n(r.real)-n(r.orcado);return n(r.orcado)?`<span class="${d>0?'bad':'ok'}">${d>0?'+':''}${fm(d)}</span>`:'—'}]]},
  fornecedores:{t:'Fornecedores',tab:'Fornecedores',c:[['nome','Fornecedor'],['serv','Serviço'],['ctt','Contato'],['venc','Contrato vence em',r=>br(r.venc)],['nota','Avaliação'],['st','Status']]},
@@ -80,21 +81,55 @@ function head(){const c=D?.cfg||{},l=document.getElementById('logo');
 function nav(){document.getElementById('nav').innerHTML=Object.entries(V).map(([k,v])=>`<button class="${k==cur?'on':''}" data-m="${k}">${v.t}</button>`).join('')}
 function table(k){const v=V[k],rows=D[v.tab];
  return`<div class="box"><h2>${v.t}</h2><p class="hint">Somente leitura. Para alterar, edite a aba "${v.tab}" na planilha e clique em Atualizar.</p><div class="w"><table><thead><tr>${v.c.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${v.c.map(c=>`<td>${c[2]?c[2](r):esc(r[c[0]])}</td>`).join('')}</tr>`).join('')||'<tr><td class="hint">Nada cadastrado nesta aba.</td></tr>'}</tbody></table></div></div>`}
-function dash(){const hoje=new Date().toISOString().slice(0,10),lim=new Date(Date.now()+30*864e5).toISOString().slice(0,10);
+const S={ev:'',mod:0},addD=(iso,d)=>{if(!iso)return'';const t=new Date(iso+'T12:00:00');t.setDate(t.getDate()-n(d));return t.toISOString().slice(0,10)},hojeS=()=>new Date().toISOString().slice(0,10);
+let CP='';
+function tasks(e){const A=D.Andamento.filter(a=>a.ev==e.nome);
+ const b=D.Padrao.map(p=>{const a=A.find(x=>x.item==p.tarefa);return{fase:p.fase,tarefa:p.tarefa,tipo:p.tipo,prazo:addD(e.data,p.dias),st:a?(a.st||'Pendente'):'Pendente'}});
+ const x=D.Operacao.filter(o=>o.ev==e.nome).map(o=>({fase:o.tipo||'Extra',tarefa:o.tarefa,tipo:'Checklist',prazo:o.prazo,st:o.ok?'Concluída':'Pendente'}));return b.concat(x)}
+const stH=t=>t.st=='Concluída'?'<span class="ok">Concluída</span>':(t.prazo&&t.prazo<hojeS()?`<span class="bad">${esc(t.st)} · atrasada</span>`:esc(t.st));
+const pg=(a)=>{const d=a.filter(t=>t.st=='Concluída').length;return`<div class="bar"><i style="width:${a.length?d/a.length*100:0}%"></i></div><span class="hint">${d}/${a.length} itens</span>`};
+function sel(id,k,opts,v){return`<select id="${id}" data-s="${k}">${opts.map((o,i)=>`<option value="${k=='mod'?i:esc(o)}" ${(k=='mod'?i==v:o==v)?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
+function dash(){const hoje=hojeS(),lim=new Date(Date.now()+30*864e5).toISOString().slice(0,10);
  const orc=D.Orcamento.reduce((a,r)=>a+n(r.orcado),0),rea=D.Orcamento.reduce((a,r)=>a+n(r.real),0),prox=D.Eventos.filter(e=>e.data>=hoje).length,al=[];
  D.Orcamento.forEach(r=>{if(n(r.orcado)&&n(r.real)>n(r.orcado)*1.1)al.push(['r',`Custo acima de 10% do orçado: ${r.ev||'—'} / ${r.item}`])});
  D.Fornecedores.forEach(f=>{if(f.venc&&f.venc<=lim&&f.st=='Contratado')al.push([f.venc<hoje?'r':'',`Contrato de ${f.nome} ${f.venc<hoje?'vencido':'vence'} em ${br(f.venc)}`])});
- D.Operacao.forEach(o=>{if(!o.ok&&o.prazo&&o.prazo<hoje)al.push(['r',`Atrasado: ${o.tarefa} (${o.ev||'—'})`])});
- const prog=D.Eventos.map(e=>{const t=D.Operacao.filter(o=>o.ev==e.nome&&o.tipo=='Checklist'),d=t.filter(o=>o.ok).length;return`<tr><td>${esc(e.nome)}</td><td>${br(e.data)}</td><td>${esc(e.etapa)}</td><td style="min-width:140px"><div class="bar"><i style="width:${t.length?d/t.length*100:0}%"></i></div><span class="hint">${d}/${t.length} itens</span></td></tr>`}).join('');
+ D.Eventos.forEach(e=>{if(e.data>=hoje)tasks(e).forEach(t=>{if(t.tipo=='Cronograma'&&t.st!='Concluída'&&t.prazo&&t.prazo<hoje)al.push(['r',`Atrasada: ${t.tarefa} (${e.nome}, prazo ${br(t.prazo)})`])})});
+ const prog=D.Eventos.map(e=>`<tr><td><button data-go="${esc(e.nome)}">${esc(e.nome)}</button></td><td>${br(e.data)}</td><td>${esc(e.etapa)}</td><td style="min-width:140px">${pg(tasks(e))}</td></tr>`).join('');
  return`<div class="kp"><div class="k"><b>${D.Eventos.length}</b><span>Eventos</span></div><div class="k"><b>${prox}</b><span>Próximos</span></div><div class="k"><b>${fm(orc)}</b><span>Orçado</span></div><div class="k"><b>${fm(rea)}</b><span>Realizado</span></div><div class="k"><b class="${rea>orc&&orc?'bad':'ok'}">${fm(orc-rea)}</b><span>Saldo</span></div></div>
- <div class="box"><h2>Alertas</h2>${al.map(a=>`<div class="al ${a[0]}">${esc(a[1])}</div>`).join('')||'<p class="hint">Nenhum alerta no momento.</p>'}</div>
- <div class="box"><h2>Eventos e andamento</h2><div class="w"><table><thead><tr><th>Evento</th><th>Data</th><th>Etapa</th><th>Checklist</th></tr></thead><tbody>${prog||'<tr><td class="hint">Cadastre eventos na aba Eventos da planilha.</td></tr>'}</tbody></table></div></div>`}
+ <div class="box"><h2>Alertas</h2>${al.slice(0,12).map(a=>`<div class="al ${a[0]}">${esc(a[1])}</div>`).join('')||'<p class="hint">Nenhum alerta no momento.</p>'}${al.length>12?`<p class="hint">+ ${al.length-12} alertas</p>`:''}</div>
+ <div class="box"><h2>Eventos e andamento</h2><p class="hint">Toque no nome do evento para abrir a ficha completa.</p><div class="w"><table><thead><tr><th>Evento</th><th>Data</th><th>Etapa</th><th>Progresso (cronograma e checklist)</th></tr></thead><tbody>${prog||'<tr><td class="hint">Cadastre eventos na aba Eventos da planilha.</td></tr>'}</tbody></table></div></div>`}
+function ficha(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<div class="box"><p class="hint">Cadastre um evento na aba Eventos da planilha.</p></div>';
+ if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),T=tasks(e),b=D.Briefing.find(x=>x.ev==e.nome),hoje=hojeS();
+ const BL=[['obj','Objetivo'],['res','Resultado esperado'],['pub','Público'],['ein','Escopo: incluído'],['eout','Escopo: não incluído'],['prog','Programação'],['hor','Horário'],['ctt','Contato no dia'],['log','Logística e infraestrutura'],['com','Comunicação'],['apr','Aprovado por']];
+ const tb=(f)=>{const a=T.filter(f);return`<div class="w"><table><thead><tr><th>Fase</th><th>Tarefa</th><th>Prazo</th><th>Status</th></tr></thead><tbody>${a.map(t=>`<tr><td>${esc(t.fase)}</td><td>${esc(t.tarefa)}</td><td>${br(t.prazo)}</td><td>${stH(t)}</td></tr>`).join('')}</tbody></table></div>`};
+ let R=D.Riscos.filter(r=>r.ev==e.nome),pad=!R.length;if(pad)R=D.Riscos.filter(r=>r.ev=='(padrão)'||r.ev=='(padrao)');
+ R=R.map(r=>({...r,s:n(r.p)*n(r.i)})).sort((a,c)=>c.s-a.s);
+ const EQ=D.Equipes.filter(x=>x.ev==e.nome),OR=D.Orcamento.filter(x=>x.ev==e.nome),RS=D.Resultados.find(x=>x.ev==e.nome);
+ const to=OR.reduce((a,r)=>a+n(r.orcado),0),tr=OR.reduce((a,r)=>a+n(r.real),0),pub=RS?n(RS.pub):0,cu=RS&&n(RS.custo)?n(RS.custo):tr;
+ return`<div class="tools">${sel('selEv','ev',names,S.ev)}<button onclick="print()">Imprimir / salvar PDF</button></div>
+ <div class="box pb"><h2>${esc(e.nome)}</h2><p>${br(e.data)} · ${esc(e.local)} · ${esc(e.tipo)} · Etapa: ${esc(e.etapa)}<br>Público previsto: ${esc(e.publico)||'—'} · Responsável: ${esc(e.resp)||'—'}</p>${e.nota?`<p class="hint">${esc(e.nota)}</p>`:''}${pg(T)}</div>
+ <div class="box pb"><h2>Briefing</h2>${b?`<div class="w"><table><tbody>${BL.filter(x=>b[x[0]]).map(x=>`<tr><td style="width:210px"><b>${x[1]}</b></td><td>${esc(b[x[0]])}</td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Sem briefing. Preencha a aba Briefing da planilha (uma linha por evento).</p>'}</div>
+ <div class="box"><h2>Cronograma</h2>${e.data?'':'<p class="hint">Informe a data do evento na aba Eventos para calcular os prazos.</p>'}${tb(t=>t.tipo=='Cronograma')}</div>
+ <div class="box"><h2>Checklist operacional</h2>${tb(t=>t.tipo=='Checklist')}</div>
+ <div class="box pb"><h2>Matriz de riscos</h2>${pad?'<p class="hint">Lista padrão. Para personalizar, cadastre riscos deste evento na aba Riscos.</p>':''}<div class="w"><table><thead><tr><th>Risco</th><th>Nível</th><th>Prevenção</th><th>Plano B</th><th>Responsável</th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.risco)}</td><td class="${r.s>=6?'bad':r.s>=3?'wn':'ok'}">${r.s>=6?'Alto':r.s>=3?'Médio':'Baixo'} (${r.s})</td><td>${esc(r.prev)}</td><td>${esc(r.planob)}</td><td>${esc(r.resp)||'—'}</td></tr>`).join('')}</tbody></table></div></div>
+ <div class="box pb"><h2>Equipe</h2><div class="w"><table><thead><tr><th>Pessoa</th><th>Função</th><th>Turno</th><th>Contato</th></tr></thead><tbody>${EQ.map(x=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.func)}</td><td>${esc(x.turno)}</td><td>${esc(x.ctt)}</td></tr>`).join('')||'<tr><td class="hint">Ninguém escalado ainda (aba Equipes).</td></tr>'}</tbody></table></div></div>
+ <div class="box pb"><h2>Financeiro e resultado</h2><div class="w"><table><thead><tr><th>Item</th><th>Orçado</th><th>Realizado</th><th>Desvio</th><th>Cotação</th></tr></thead><tbody>${OR.map(r=>{const d=n(r.real)-n(r.orcado);return`<tr><td>${esc(r.item)}</td><td>${fm(n(r.orcado))}</td><td>${fm(n(r.real))}</td><td class="${d>0?'bad':'ok'}">${fm(d)}</td><td>${esc(r.cot)}</td></tr>`}).join('')||'<tr><td class="hint">Sem itens (aba Orcamento).</td></tr>'}</tbody></table></div>
+ <div class="kp" style="margin-top:12px"><div class="k"><b>${fm(to)}</b><span>Orçado</span></div><div class="k"><b>${fm(tr)}</b><span>Realizado</span></div><div class="k"><b>${RS?esc(RS.pub):'—'}</b><span>Público real</span></div><div class="k"><b>${RS?esc(RS.sat):'—'}</b><span>Satisfação (0-10)</span></div><div class="k"><b>${pub?fm(cu/pub):'—'}</b><span>Custo por participante</span></div></div>${RS&&RS.lic?`<p><b>Lições aprendidas:</b> ${esc(RS.lic)}</p>`:''}</div>`}
+function comunic(){const names=D.Eventos.map(e=>e.nome);if(!names.length||!D.Modelos.length)return'<div class="box"><p class="hint">Cadastre um evento e confira a aba Modelos da planilha.</p></div>';
+ if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),b=D.Briefing.find(x=>x.ev==e.nome)||{},m=D.Modelos[S.mod]||D.Modelos[0];
+ const V2={evento:e.nome,data:br(e.data),horario:b.hor||'[horário]',local:e.local||'[local]',publico:b.pub||'[público]',resp:D.cfg.responsavel||'Bruno',contato:b.ctt||'[contato]',link:b.link||'[link]',prazo:b.prazo||'[prazo]',escola:D.cfg.nome||'Legacy School'};
+ const f=s=>String(s||'').replace(/\{(\w+)\}/g,(x,k)=>V2[k]??x);CP=(m.assunto?'Assunto: '+f(m.assunto)+'\n\n':'')+f(m.texto);
+ return`<div class="box"><h2>Gerador de comunicação</h2><p class="hint">Escolha o evento e o modelo. Os dados vêm das abas Eventos e Briefing. O que estiver entre [colchetes] você completa antes de enviar.</p><div class="tools">${sel('selEv','ev',names,S.ev)}${sel('selMod','mod',D.Modelos.map(x=>x.nome),S.mod)}<button data-cp="1">Copiar texto</button></div><pre style="white-space:pre-wrap;font:inherit;background:var(--bg);padding:12px;border-radius:6px">${esc(CP)}</pre></div>`}
+const view=()=>cur=='dashboard'?dash():cur=='ficha'?ficha():cur=='comunic'?comunic():table(cur);
 function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
 function draw(){head();nav();const m=document.getElementById('m');
  if(!ID){m.innerHTML=setup();return}
- m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?(cur=='dashboard'?dash():table(cur)):'')}
+ m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?view():'')}
 document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw()}
+ if(t.dataset.go){S.ev=t.dataset.go;cur='ficha';draw()}
+ if(t.dataset.cp){(navigator.clipboard?navigator.clipboard.writeText(CP):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Selecione e copie manualmente'})}
  if(t.id=='go'){const m=document.getElementById('lk').value.match(/\/d\/([\w-]+)/)||[0,document.getElementById('lk').value.trim()];if(m[1]){ID=m[1];localStorage.setItem('sheetId',ID);load()}}});
+document.addEventListener('change',e=>{const t=e.target;if(t.dataset.s){S[t.dataset.s]=t.dataset.s=='mod'?+t.value:t.value;draw()}});
 rf.onclick=()=>ID&&load();
 chg.onclick=()=>{localStorage.removeItem('sheetId');ID='';D=null;msg='';draw()};
 try{const c=localStorage.getItem('cache-'+ID);if(c)D=JSON.parse(c)}catch(e){}
