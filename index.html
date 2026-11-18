@@ -1,6 +1,8 @@
 <!DOCTYPE html>
 <html lang="pt-BR"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#14213d">
+<link rel="manifest" href="manifest.json">
 <title>Gestão de Eventos</title>
 <style>
 :root{--ink:#14213d;--bg:#eef1f5;--card:#fff;--line:#d5dbe4;--acc:#0f766e;--warn:#b45309;--bad:#b91c1c;--mut:#5b6678}
@@ -19,119 +21,159 @@ main{padding:18px;max-width:1200px;margin:auto}
 .box{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:14px;margin-bottom:16px}.box h2{margin:0 0 8px;font:600 17px Georgia,serif}
 .w{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px}th{text-align:left;font-size:12px;color:var(--mut);font-weight:600;padding:4px 8px}
 td{padding:6px 8px;border-top:1px solid var(--line);vertical-align:top}
-.bad{color:var(--bad);font-weight:600}.ok{color:var(--acc);font-weight:600}
+.bad{color:var(--bad);font-weight:600}.ok{color:var(--acc);font-weight:600}.wn{color:var(--warn);font-weight:600}.gray{color:var(--mut)}
 .al{padding:6px 10px;border-left:4px solid var(--warn);background:var(--bg);margin:5px 0;border-radius:0 6px 6px 0}.al.r{border-color:var(--bad)}
 .bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}.bar i{display:block;height:100%;background:var(--acc)}
 .hint{color:var(--mut);font-size:13px}.tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}
-input.l{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;width:min(520px,100%);background:var(--bg);color:var(--ink)}
+input.l,input.t,textarea.t{font:inherit;padding:8px;border:1px solid var(--line);border-radius:6px;width:min(520px,100%);background:var(--bg);color:var(--ink)}
 footer{text-align:center;padding:16px}footer button{border:0;background:none;color:var(--mut);text-decoration:underline}
-button:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
-select{font:inherit;padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);max-width:100%}.wn{color:var(--warn);font-weight:600}td button{border:0;background:none;color:var(--acc);text-decoration:underline;padding:0;text-align:left}.pb{break-inside:avoid}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+select{font:inherit;padding:7px;border:1px solid var(--line);border-radius:6px;background:var(--card);color:var(--ink);max-width:100%}
+td button{border:0;background:none;color:var(--acc);text-decoration:underline;padding:0;text-align:left}.pb{break-inside:avoid}
+label.dd{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;border-top:1px solid var(--line);font-size:16px}label.dd input{width:22px;height:22px;flex:none;margin-top:2px}label.dd.f span{text-decoration:line-through;color:var(--mut)}
 @media print{header button,nav,.tools,footer{display:none}body{background:#fff;color:#000}}
 </style></head><body>
 <header><img id="logo" alt="Logo">
 <h1 id="ttl">Gestão de Eventos<small id="sub"></small></h1>
 <button id="rf">Atualizar</button><button onclick="print()">Imprimir</button></header>
-<nav id="nav"></nav><main id="m"></main>
+<nav id="nav" aria-label="Módulos"></nav><main id="m"></main>
 <footer><button id="chg">Trocar planilha conectada</button></footer>
 <script>
-const n=v=>{v=String(v??'').trim();if(v.includes(','))v=v.replace(/\./g,'').replace(',','.');return parseFloat(v)||0};
+const p2=v=>String(v).padStart(2,'0'),iso=d=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+const hojeS=()=>iso(new Date());
+const nm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
+const done=s=>nm(s).startsWith('conclu');
+const n=v=>{v=String(v??'').trim().replace(/[R$\s]/g,'');if(v.includes(','))v=v.replace(/\./g,'').replace(',','.');else if(/^\d{1,3}(\.\d{3})+$/.test(v))v=v.replace(/\./g,'');return parseFloat(v)||0};
+const addD=(s,d)=>{if(!s)return'';const t=new Date(s+'T12:00:00');t.setDate(t.getDate()-n(d));return iso(t)};
 const fm=v=>'R$ '+v.toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
-const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const dt=s=>{s=String(s||'').trim();const m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);return m?`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`:s.slice(0,10)};
 const br=s=>s?s.split('-').reverse().join('/'):'—';
 const sim=v=>/^(sim|true|verdadeiro|x|1)$/i.test(String(v).trim());
-// Aba da planilha -> colunas, na mesma ordem da planilha mestre
-const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic'],Padrao:['fase','tarefa','dias','tipo'],Briefing:['ev','obj','res','pub','ein','eout','prog','hor','ctt','link','prazo','log','com','apr'],Riscos:['ev','risco','p','i','prev','planob','resp'],Andamento:['ev','item','st','obs'],Modelos:['nome','assunto','texto']};
+// Colunas na ordem da planilha mestre. Regra: NUNCA inserir colunas no meio; novas colunas sempre no fim.
+const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st','spoc'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic'],Padrao:['fase','tarefa','dias','tipo','formato'],Briefing:['ev','obj','res','pub','ein','eout','prog','hor','ctt','link','prazo','log','com','apr'],Riscos:['ev','risco','p','i','prev','planob','resp'],Andamento:['ev','item','st','obs'],Modelos:['nome','assunto','texto'],RunSheet:['ev','ini','fim','acao','resp','st']};
+const OPT=['RunSheet'];
 const V={
- dashboard:{t:'Dashboard'},ficha:{t:'Ficha do evento'},comunic:{t:'Comunicação'},
+ dashboard:{t:'Dashboard'},ficha:{t:'Ficha do evento'},
  eventos:{t:'Planejamento',tab:'Eventos',c:[['nome','Evento'],['data','Data',r=>br(r.data)],['local','Local'],['tipo','Tipo'],['publico','Público previsto'],['etapa','Etapa'],['resp','Responsável'],['nota','Observações']]},
  orcamento:{t:'Financeiro',tab:'Orcamento',c:[['ev','Evento'],['item','Item'],['orcado','Orçado',r=>fm(n(r.orcado))],['real','Realizado',r=>fm(n(r.real))],['cot','Cotação'],['d','Desvio',r=>{const d=n(r.real)-n(r.orcado);return n(r.orcado)?`<span class="${d>0?'bad':'ok'}">${d>0?'+':''}${fm(d)}</span>`:'—'}]]},
- fornecedores:{t:'Fornecedores',tab:'Fornecedores',c:[['nome','Fornecedor'],['serv','Serviço'],['ctt','Contato'],['venc','Contrato vence em',r=>br(r.venc)],['nota','Avaliação'],['st','Status']]},
+ fornecedores:{t:'Fornecedores',tab:'Fornecedores',c:[['nome','Fornecedor'],['serv','Serviço'],['ctt','Contato'],['spoc','SPOC (contato interno)'],['venc','Contrato vence em',r=>br(r.venc)],['nota','Avaliação'],['st','Status']]},
  equipes:{t:'Equipes',tab:'Equipes',c:[['ev','Evento'],['nome','Pessoa'],['func','Função'],['turno','Turno'],['ctt','Contato']]},
  operacao:{t:'Operação',tab:'Operacao',c:[['ev','Evento'],['tipo','Tipo'],['tarefa','Tarefa / plano'],['resp','Responsável'],['prazo','Prazo',r=>br(r.prazo)],['ok','Feito',r=>r.ok?'<span class="ok">Sim</span>':'Pendente']]},
- resultados:{t:'Resultados',tab:'Resultados',c:[['ev','Evento'],['pub','Público real'],['sat','Satisfação'],['custo','Custo total',r=>fm(n(r.custo))],['cpp','Custo por participante',r=>n(r.pub)?fm(n(r.custo)/n(r.pub)):'—'],['lic','Lições aprendidas']]}
+ runsheet:{t:'Run Sheet',tab:'RunSheet',sort:'ini',c:[['ev','Evento'],['ini','Início'],['fim','Fim'],['acao','Ação / atividade'],['resp','Responsável'],['st','Status']]},
+ diad:{t:'Dia D'},comunic:{t:'Comunicação'},
+ resultados:{t:'Resultados',tab:'Resultados',c:[['ev','Evento'],['pub','Público real'],['sat','Satisfação'],['custo','Custo total',r=>fm(n(r.custo))],['cpp','Custo por participante',r=>n(r.pub)?fm(n(r.custo)/n(r.pub)):'—'],['lic','Lições aprendidas']]},
+ ajuda:{t:'Ajuda'}
 };
-let D=null,cur='dashboard',ID=localStorage.getItem('sheetId')||'',msg='';
-function csv(t){const R=[];let r=[],f='',q=false;for(let i=0;i<t.length;i++){const c=t[i];
- if(q){if(c=='"'){if(t[i+1]=='"'){f+='"';i++}else q=false}else f+=c}
- else if(c=='"')q=true;else if(c==','){r.push(f);f=''}else if(c=='\n'||c=='\r'){if(c=='\r'&&t[i+1]=='\n')i++;r.push(f);R.push(r);r=[];f=''}else f+=c}
- if(f||r.length){r.push(f);R.push(r)}return R}
+let D=null,cur='dashboard',ID=localStorage.getItem('sheetId')||'',msg='',CP='';
+const S={ev:'',evf:'',mod:0};
+function csv(){}
 let seq=0;
 function jq(tab){return new Promise((ok,no)=>{const f='gv'+(++seq)+Date.now(),sc=document.createElement('script');
  const end=()=>{delete window[f];sc.remove()};
  window[f]=o=>{end();if(o.status!='ok'){no(new Error('o Google recusou a aba "'+tab+'": '+((o.errors||[{}])[0].detailed_message||(o.errors||[{}])[0].message||'erro desconhecido')));return}
   ok(o.table.rows.map(r=>(r.c||[]).map(c=>{if(!c||c.v==null)return'';return(typeof c.v=='string'&&/^Date\(/.test(c.v))?(c.f||''):c.v})))};
- sc.onerror=()=>{end();no(new Error('não consegui abrir a aba "'+tab+'". Confira: (1) o arquivo é uma Planilha Google de verdade (não .xlsx), (2) está compartilhado como "Qualquer pessoa com o link: Leitor", (3) o link está certo, (4) a aba tem esse nome exato'))};
+ sc.onerror=()=>{end();no(new Error('não consegui abrir a aba "'+tab+'". Confira: (1) é uma Planilha Google de verdade (não .xlsx), (2) está compartilhada como "Qualquer pessoa com o link: Leitor", (3) o link está certo, (4) a aba tem esse nome exato'))};
  sc.src=`https://docs.google.com/spreadsheets/d/${ID}/gviz/tq?headers=1&tqx=responseHandler:${f}&sheet=${encodeURIComponent(tab)}&_=${Date.now()}`;document.head.appendChild(sc)})}
-async function load(){msg='Carregando…';draw();
+const rd=async(tab,keys)=>(await jq(tab)).filter(r=>r.some(x=>String(x).trim())).map(r=>{const o={};keys.forEach((k,i)=>o[k]=String(r[i]??'').trim());
+ ['data','venc','prazo'].forEach(k=>{if(o[k]!==undefined)o[k]=dt(o[k])});if(o.ok!==undefined)o.ok=sim(o.ok);return o});
+const keep=()=>{const y=scrollY;draw();scrollTo(0,y)};
+async function load(silent){if(!silent){msg='Carregando…';draw()}
  try{const out={cfg:{}};
   (await jq('Config')).forEach(r=>{if(r[0])out.cfg[String(r[0]).trim()]=String(r[1]??'').trim()});
-  for(const [tab,keys] of Object.entries(T)){
-   out[tab]=(await jq(tab)).filter(r=>r.some(x=>String(x).trim())).map(r=>{const o={};keys.forEach((k,i)=>o[k]=String(r[i]??'').trim());
-    if(o.data!==undefined)o.data=dt(o.data);if(o.venc!==undefined)o.venc=dt(o.venc);if(o.prazo!==undefined)o.prazo=dt(o.prazo);if(o.ok!==undefined)o.ok=sim(o.ok);return o})}
-  D=out;out.at=new Date().toLocaleString('pt-BR');localStorage.setItem('cache-'+ID,JSON.stringify(out));msg=''}
- catch(e){const c=localStorage.getItem('cache-'+ID);if(c){D=JSON.parse(c);msg='Sem conexão com a planilha ('+e.message+'). Mostrando a última atualização ('+D.at+').'}else{D=null;msg='Não consegui ler a planilha: '+e.message+'.'}}
- draw()}
+  const ent=Object.entries(T),res=await Promise.all(ent.map(([tab,k])=>rd(tab,k).catch(e=>{if(OPT.includes(tab))return[];throw e})));
+  ent.forEach(([tab],i)=>out[tab]=res[i]);out.at=new Date().toLocaleString('pt-BR');
+  const same=JSON.stringify({...D,at:0})==JSON.stringify({...out,at:0});
+  D=out;msg='';try{localStorage.setItem('cache-'+ID,JSON.stringify(out))}catch(e){}
+  if(!silent||!same)keep();else head()}
+ catch(e){const c=localStorage.getItem('cache-'+ID);if(c){D=JSON.parse(c);msg='Sem conexão com a planilha ('+e.message+'). Mostrando a última atualização ('+D.at+').'}else{D=null;msg='Não consegui ler a planilha: '+e.message+'.'}
+  if(!silent||!D)draw()}}
 function head(){const c=D?.cfg||{},l=document.getElementById('logo');
- let g=c.logo||'';const m=g.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);if(m&&/drive\.google/.test(g))g=`https://drive.google.com/thumbnail?id=${m[1]||m[2]}&sz=w400`;
- l.style.display=g?'block':'none';if(g)l.src=g;l.onerror=()=>l.style.display='none';
+ let g=c.logo||'logo.png';const m=g.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);if(m&&/drive\.google/.test(g))g=`https://drive.google.com/thumbnail?id=${m[1]||m[2]}&sz=w400`;
+ l.style.display='block';if(l.getAttribute('src')!=g)l.src=g;l.onerror=()=>l.style.display='none';
  const nome=c.nome||'Legacy School';document.getElementById('ttl').firstChild.nodeValue='Gestão de Eventos – '+nome;
  document.getElementById('sub').textContent='Responsável: '+(c.responsavel||'Bruno')+(D?.at?' · atualizado em '+D.at:'');document.title='Gestão de Eventos – '+nome}
-function nav(){document.getElementById('nav').innerHTML=Object.entries(V).map(([k,v])=>`<button class="${k==cur?'on':''}" data-m="${k}">${v.t}</button>`).join('')}
-function table(k){const v=V[k],rows=D[v.tab];
- return`<div class="box"><h2>${v.t}</h2><p class="hint">Somente leitura. Para alterar, edite a aba "${v.tab}" na planilha e clique em Atualizar.</p><div class="w"><table><thead><tr>${v.c.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${v.c.map(c=>`<td>${c[2]?c[2](r):esc(r[c[0]])}</td>`).join('')}</tr>`).join('')||'<tr><td class="hint">Nada cadastrado nesta aba.</td></tr>'}</tbody></table></div></div>`}
-const S={ev:'',mod:0},addD=(iso,d)=>{if(!iso)return'';const t=new Date(iso+'T12:00:00');t.setDate(t.getDate()-n(d));return t.toISOString().slice(0,10)},hojeS=()=>new Date().toISOString().slice(0,10);
-let CP='';
-function tasks(e){const A=D.Andamento.filter(a=>a.ev==e.nome);
- const b=D.Padrao.map(p=>{const a=A.find(x=>x.item==p.tarefa);return{fase:p.fase,tarefa:p.tarefa,tipo:p.tipo,prazo:addD(e.data,p.dias),st:a?(a.st||'Pendente'):'Pendente'}});
- const x=D.Operacao.filter(o=>o.ev==e.nome).map(o=>({fase:o.tipo||'Extra',tarefa:o.tarefa,tipo:'Checklist',prazo:o.prazo,st:o.ok?'Concluída':'Pendente'}));return b.concat(x)}
-const stH=t=>t.st=='Concluída'?'<span class="ok">Concluída</span>':(t.prazo&&t.prazo<hojeS()?`<span class="bad">${esc(t.st)} · atrasada</span>`:esc(t.st));
-const pg=(a)=>{const d=a.filter(t=>t.st=='Concluída').length;return`<div class="bar"><i style="width:${a.length?d/a.length*100:0}%"></i></div><span class="hint">${d}/${a.length} itens</span>`};
-function sel(id,k,opts,v){return`<select id="${id}" data-s="${k}">${opts.map((o,i)=>`<option value="${k=='mod'?i:esc(o)}" ${(k=='mod'?i==v:o==v)?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
-function dash(){const hoje=hojeS(),lim=new Date(Date.now()+30*864e5).toISOString().slice(0,10);
- const orc=D.Orcamento.reduce((a,r)=>a+n(r.orcado),0),rea=D.Orcamento.reduce((a,r)=>a+n(r.real),0),prox=D.Eventos.filter(e=>e.data>=hoje).length,al=[];
- D.Orcamento.forEach(r=>{if(n(r.orcado)&&n(r.real)>n(r.orcado)*1.1)al.push(['r',`Custo acima de 10% do orçado: ${r.ev||'—'} / ${r.item}`])});
- D.Fornecedores.forEach(f=>{if(f.venc&&f.venc<=lim&&f.st=='Contratado')al.push([f.venc<hoje?'r':'',`Contrato de ${f.nome} ${f.venc<hoje?'vencido':'vence'} em ${br(f.venc)}`])});
- D.Eventos.forEach(e=>{if(e.data>=hoje)tasks(e).forEach(t=>{if(t.tipo=='Cronograma'&&t.st!='Concluída'&&t.prazo&&t.prazo<hoje)al.push(['r',`Atrasada: ${t.tarefa} (${e.nome}, prazo ${br(t.prazo)})`])})});
- const prog=D.Eventos.map(e=>`<tr><td><button data-go="${esc(e.nome)}">${esc(e.nome)}</button></td><td>${br(e.data)}</td><td>${esc(e.etapa)}</td><td style="min-width:140px">${pg(tasks(e))}</td></tr>`).join('');
- return`<div class="kp"><div class="k"><b>${D.Eventos.length}</b><span>Eventos</span></div><div class="k"><b>${prox}</b><span>Próximos</span></div><div class="k"><b>${fm(orc)}</b><span>Orçado</span></div><div class="k"><b>${fm(rea)}</b><span>Realizado</span></div><div class="k"><b class="${rea>orc&&orc?'bad':'ok'}">${fm(orc-rea)}</b><span>Saldo</span></div></div>
+function nav(){document.getElementById('nav').innerHTML=Object.entries(V).map(([k,v])=>`<button class="${k==cur?'on':''}" data-m="${k}" ${k==cur?'aria-current="page"':''}>${v.t}</button>`).join('')}
+const evOf=r=>nm(r.ev);
+function fbar(){const names=D.Eventos.map(e=>e.nome);return`<div class="tools"><select data-s="evf" aria-label="Filtrar por evento"><option value="">Todos os eventos</option>${names.map(x=>`<option value="${esc(x)}" ${x==S.evf?'selected':''}>${esc(x)}</option>`).join('')}</select></div>`}
+function table(k){const v=V[k];let rows=(D[v.tab]||[]).filter(r=>!S.evf||v.tab=='Fornecedores'||nm(r.ev??r.nome)==nm(S.evf));
+ if(v.sort)rows=[...rows].sort((a,b)=>String(a[v.sort]).localeCompare(String(b[v.sort])));
+ return`${fbar()}<div class="box"><h2>${v.t}</h2><p class="hint">Somente leitura. Para alterar, edite a aba "${v.tab}" na planilha e clique em Atualizar.</p><div class="w"><table><thead><tr>${v.c.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${v.c.map(c=>`<td>${c[2]?c[2](r):esc(r[c[0]])}</td>`).join('')}</tr>`).join('')||'<tr><td class="hint">Nada cadastrado nesta aba.</td></tr>'}</tbody></table></div></div>`}
+function tasks(e){const k=nm(e.nome),A=D.Andamento.filter(a=>evOf(a)==k),f=nm(e.tipo);
+ const b=D.Padrao.filter(p=>!p.formato||f.includes(nm(p.formato))).map(p=>{const a=A.find(x=>nm(x.item)==nm(p.tarefa));return{fase:p.fase,tarefa:p.tarefa,tipo:p.tipo,prazo:addD(e.data,p.dias),st:a?(a.st||'Pendente'):'Pendente'}});
+ const x=D.Operacao.filter(o=>evOf(o)==k).map(o=>({fase:o.tipo||'Extra',tarefa:o.tarefa,tipo:'Checklist',prazo:o.prazo,st:o.ok?'Concluída':'Pendente'}));return b.concat(x)}
+const late=t=>!done(t.st)&&t.prazo&&t.prazo<hojeS();
+const stH=t=>done(t.st)?'<span class="ok">Concluída</span>':(late(t)?`<span class="bad">${esc(t.st)} · atrasada</span>`:esc(t.st));
+const pg=a=>{const d=a.filter(t=>done(t.st)).length;return`<div class="bar"><i style="width:${a.length?d/a.length*100:0}%"></i></div><span class="hint">${d}/${a.length} itens</span>`};
+function saude(e){const hoje=hojeS();if(!e.data||e.data<hoje)return['gray','Encerrado / sem data'];
+ const T=tasks(e),p=T.length?T.filter(t=>done(t.st)).length/T.length*100:0,L=T.filter(late).length,dias=Math.round((new Date(e.data+'T12:00:00')-new Date(hoje+'T12:00:00'))/864e5);
+ const OR=D.Orcamento.filter(r=>evOf(r)==nm(e.nome)),o=OR.reduce((a,r)=>a+n(r.orcado),0),r=OR.reduce((a,r)=>a+n(r.real),0);
+ if(L>=3||(dias<=7&&p<70)||(o&&r>o*1.1))return['bad','Atenção'];if(L>=1||(dias<=30&&p<30))return['wn','Cuidado'];return['ok','No prazo']}
+function sel(id,k,opts,v){return`<select id="${id}" data-s="${k}" aria-label="${k=='mod'?'Modelo':'Evento'}">${opts.map((o,i)=>`<option value="${k=='mod'?i:esc(o)}" ${(k=='mod'?i==v:o==v)?'selected':''}>${esc(o)}</option>`).join('')}</select>`}
+function dash(){const hoje=hojeS(),lim=iso(new Date(Date.now()+30*864e5)),evs=D.Eventos.filter(e=>!S.evf||e.nome==S.evf),ks=evs.map(e=>nm(e.nome)),al=[];
+ const OR=D.Orcamento.filter(r=>!S.evf||ks.includes(evOf(r))),orc=OR.reduce((a,r)=>a+n(r.orcado),0),rea=OR.reduce((a,r)=>a+n(r.real),0),prox=evs.filter(e=>e.data>=hoje).length;
+ OR.forEach(r=>{if(n(r.orcado)&&n(r.real)>n(r.orcado)*1.1)al.push(['r',`Custo acima de 10% do orçado: ${r.ev||'—'} / ${r.item}`])});
+ D.Fornecedores.forEach(f=>{if(f.venc&&f.venc<=lim&&nm(f.st)=='contratado')al.push([f.venc<hoje?'r':'',`Contrato de ${f.nome} ${f.venc<hoje?'vencido':'vence'} em ${br(f.venc)}`])});
+ D.Riscos.forEach(r=>{if(n(r.p)*n(r.i)>=6&&!r.planob&&(!S.evf||ks.includes(evOf(r))))al.push(['r',`Risco alto sem Plano B: ${r.risco}`])});
+ evs.forEach(e=>{if(e.data>=hoje)tasks(e).forEach(t=>{if(t.tipo=='Cronograma'&&late(t))al.push(['r',`Atrasada: ${t.tarefa} (${e.nome}, prazo ${br(t.prazo)})`])})});
+ const prog=evs.map(e=>{const s=saude(e);return`<tr><td><button data-go="${esc(e.nome)}">${esc(e.nome)}</button></td><td>${br(e.data)}</td><td>${esc(e.etapa)}</td><td class="${s[0]}">● ${s[1]}</td><td style="min-width:140px">${pg(tasks(e))}</td></tr>`}).join('');
+ return`${fbar()}<div class="kp"><div class="k"><b>${evs.length}</b><span>Eventos</span></div><div class="k"><b>${prox}</b><span>Próximos</span></div><div class="k"><b>${fm(orc)}</b><span>Orçado</span></div><div class="k"><b>${fm(rea)}</b><span>Realizado</span></div><div class="k"><b class="${rea>orc&&orc?'bad':'ok'}">${fm(orc-rea)}</b><span>Saldo</span></div></div>
  <div class="box"><h2>Alertas</h2>${al.slice(0,12).map(a=>`<div class="al ${a[0]}">${esc(a[1])}</div>`).join('')||'<p class="hint">Nenhum alerta no momento.</p>'}${al.length>12?`<p class="hint">+ ${al.length-12} alertas</p>`:''}</div>
- <div class="box"><h2>Eventos e andamento</h2><p class="hint">Toque no nome do evento para abrir a ficha completa.</p><div class="w"><table><thead><tr><th>Evento</th><th>Data</th><th>Etapa</th><th>Progresso (cronograma e checklist)</th></tr></thead><tbody>${prog||'<tr><td class="hint">Cadastre eventos na aba Eventos da planilha.</td></tr>'}</tbody></table></div></div>`}
+ <div class="box"><h2>Eventos e andamento</h2><p class="hint">Toque no nome do evento para abrir a ficha completa. Semáforo: atenção = 3+ atrasos, ou menos de 70% pronto a 7 dias, ou custo 10% acima.</p><div class="w"><table><thead><tr><th>Evento</th><th>Data</th><th>Etapa</th><th>Situação</th><th>Progresso</th></tr></thead><tbody>${prog||'<tr><td class="hint">Cadastre eventos na aba Eventos da planilha.</td></tr>'}</tbody></table></div></div>`}
 function ficha(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<div class="box"><p class="hint">Cadastre um evento na aba Eventos da planilha.</p></div>';
- if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),T=tasks(e),b=D.Briefing.find(x=>x.ev==e.nome),hoje=hojeS();
+ if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),k=nm(e.nome),T=tasks(e),b=D.Briefing.find(x=>evOf(x)==k);
  const BL=[['obj','Objetivo'],['res','Resultado esperado'],['pub','Público'],['ein','Escopo: incluído'],['eout','Escopo: não incluído'],['prog','Programação'],['hor','Horário'],['ctt','Contato no dia'],['log','Logística e infraestrutura'],['com','Comunicação'],['apr','Aprovado por']];
- const tb=(f)=>{const a=T.filter(f);return`<div class="w"><table><thead><tr><th>Fase</th><th>Tarefa</th><th>Prazo</th><th>Status</th></tr></thead><tbody>${a.map(t=>`<tr><td>${esc(t.fase)}</td><td>${esc(t.tarefa)}</td><td>${br(t.prazo)}</td><td>${stH(t)}</td></tr>`).join('')}</tbody></table></div>`};
- let R=D.Riscos.filter(r=>r.ev==e.nome),pad=!R.length;if(pad)R=D.Riscos.filter(r=>r.ev=='(padrão)'||r.ev=='(padrao)');
+ const tb=f=>{const a=T.filter(f);return`<div class="w"><table><thead><tr><th>Fase</th><th>Tarefa</th><th>Prazo</th><th>Status</th></tr></thead><tbody>${a.map(t=>`<tr><td>${esc(t.fase)}</td><td>${esc(t.tarefa)}</td><td>${br(t.prazo)}</td><td>${stH(t)}</td></tr>`).join('')}</tbody></table></div>`};
+ let R=D.Riscos.filter(r=>evOf(r)==k),pad=!R.length;if(pad)R=D.Riscos.filter(r=>/^\(padr/i.test(nm(r.ev)));
  R=R.map(r=>({...r,s:n(r.p)*n(r.i)})).sort((a,c)=>c.s-a.s);
- const EQ=D.Equipes.filter(x=>x.ev==e.nome),OR=D.Orcamento.filter(x=>x.ev==e.nome),RS=D.Resultados.find(x=>x.ev==e.nome);
- const to=OR.reduce((a,r)=>a+n(r.orcado),0),tr=OR.reduce((a,r)=>a+n(r.real),0),pub=RS?n(RS.pub):0,cu=RS&&n(RS.custo)?n(RS.custo):tr;
+ const EQ=D.Equipes.filter(x=>evOf(x)==k),OR=D.Orcamento.filter(x=>evOf(x)==k),RS=D.Resultados.find(x=>evOf(x)==k),RN=D.RunSheet.filter(x=>evOf(x)==k).sort((a,c)=>String(a.ini).localeCompare(String(c.ini)));
+ const to=OR.reduce((a,r)=>a+n(r.orcado),0),tr=OR.reduce((a,r)=>a+n(r.real),0),pub=RS?n(RS.pub):0,cu=RS&&n(RS.custo)?n(RS.custo):tr,s=saude(e);
  return`<div class="tools">${sel('selEv','ev',names,S.ev)}<button onclick="print()">Imprimir / salvar PDF</button></div>
- <div class="box pb"><h2>${esc(e.nome)}</h2><p>${br(e.data)} · ${esc(e.local)} · ${esc(e.tipo)} · Etapa: ${esc(e.etapa)}<br>Público previsto: ${esc(e.publico)||'—'} · Responsável: ${esc(e.resp)||'—'}</p>${e.nota?`<p class="hint">${esc(e.nota)}</p>`:''}${pg(T)}</div>
+ <div class="box pb"><h2>${esc(e.nome)} <span class="${s[0]}" style="font:14px sans-serif">● ${s[1]}</span></h2><p>${br(e.data)} · ${esc(e.local)} · ${esc(e.tipo)} · Etapa: ${esc(e.etapa)}<br>Público previsto: ${esc(e.publico)||'—'} · Responsável: ${esc(e.resp)||'—'}</p>${e.nota?`<p class="hint">${esc(e.nota)}</p>`:''}${pg(T)}</div>
  <div class="box pb"><h2>Briefing</h2>${b?`<div class="w"><table><tbody>${BL.filter(x=>b[x[0]]).map(x=>`<tr><td style="width:210px"><b>${x[1]}</b></td><td>${esc(b[x[0]])}</td></tr>`).join('')}</tbody></table></div>`:'<p class="hint">Sem briefing. Preencha a aba Briefing da planilha (uma linha por evento).</p>'}</div>
  <div class="box"><h2>Cronograma</h2>${e.data?'':'<p class="hint">Informe a data do evento na aba Eventos para calcular os prazos.</p>'}${tb(t=>t.tipo=='Cronograma')}</div>
  <div class="box"><h2>Checklist operacional</h2>${tb(t=>t.tipo=='Checklist')}</div>
+ <div class="box pb"><h2>Run Sheet (roteiro do dia)</h2><div class="w"><table><thead><tr><th>Início</th><th>Fim</th><th>Ação</th><th>Responsável</th><th>Status</th></tr></thead><tbody>${RN.map(x=>`<tr><td>${esc(x.ini)}</td><td>${esc(x.fim)}</td><td>${esc(x.acao)}</td><td>${esc(x.resp)}</td><td>${esc(x.st)}</td></tr>`).join('')||'<tr><td class="hint">Sem roteiro (aba RunSheet).</td></tr>'}</tbody></table></div></div>
  <div class="box pb"><h2>Matriz de riscos</h2>${pad?'<p class="hint">Lista padrão. Para personalizar, cadastre riscos deste evento na aba Riscos.</p>':''}<div class="w"><table><thead><tr><th>Risco</th><th>Nível</th><th>Prevenção</th><th>Plano B</th><th>Responsável</th></tr></thead><tbody>${R.map(r=>`<tr><td>${esc(r.risco)}</td><td class="${r.s>=6?'bad':r.s>=3?'wn':'ok'}">${r.s>=6?'Alto':r.s>=3?'Médio':'Baixo'} (${r.s})</td><td>${esc(r.prev)}</td><td>${esc(r.planob)}</td><td>${esc(r.resp)||'—'}</td></tr>`).join('')}</tbody></table></div></div>
  <div class="box pb"><h2>Equipe</h2><div class="w"><table><thead><tr><th>Pessoa</th><th>Função</th><th>Turno</th><th>Contato</th></tr></thead><tbody>${EQ.map(x=>`<tr><td>${esc(x.nome)}</td><td>${esc(x.func)}</td><td>${esc(x.turno)}</td><td>${esc(x.ctt)}</td></tr>`).join('')||'<tr><td class="hint">Ninguém escalado ainda (aba Equipes).</td></tr>'}</tbody></table></div></div>
  <div class="box pb"><h2>Financeiro e resultado</h2><div class="w"><table><thead><tr><th>Item</th><th>Orçado</th><th>Realizado</th><th>Desvio</th><th>Cotação</th></tr></thead><tbody>${OR.map(r=>{const d=n(r.real)-n(r.orcado);return`<tr><td>${esc(r.item)}</td><td>${fm(n(r.orcado))}</td><td>${fm(n(r.real))}</td><td class="${d>0?'bad':'ok'}">${fm(d)}</td><td>${esc(r.cot)}</td></tr>`}).join('')||'<tr><td class="hint">Sem itens (aba Orcamento).</td></tr>'}</tbody></table></div>
  <div class="kp" style="margin-top:12px"><div class="k"><b>${fm(to)}</b><span>Orçado</span></div><div class="k"><b>${fm(tr)}</b><span>Realizado</span></div><div class="k"><b>${RS?esc(RS.pub):'—'}</b><span>Público real</span></div><div class="k"><b>${RS?esc(RS.sat):'—'}</b><span>Satisfação (0-10)</span></div><div class="k"><b>${pub?fm(cu/pub):'—'}</b><span>Custo por participante</span></div></div>${RS&&RS.lic?`<p><b>Lições aprendidas:</b> ${esc(RS.lic)}</p>`:''}</div>`}
+// Dia D: marcações e ocorrências ficam salvas SÓ neste aparelho
+const LS=k=>{try{return JSON.parse(localStorage.getItem('dd-'+k))||{c:{},o:[]}}catch(e){return{c:{},o:[]}}},SV=(k,v)=>{try{localStorage.setItem('dd-'+k,JSON.stringify(v))}catch(e){}};
+function diad(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<div class="box"><p class="hint">Cadastre um evento na aba Eventos da planilha.</p></div>';
+ if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),k=nm(e.nome),L=LS(k);
+ const RN=D.RunSheet.filter(x=>evOf(x)==k).sort((a,c)=>String(a.ini).localeCompare(String(c.ini))),CK=tasks(e).filter(t=>t.tipo=='Checklist');
+ const row=(id,txt,sub,ok)=>`<label class="dd ${ok?'f':''}"><input type="checkbox" data-ck="${esc(id)}" ${ok?'checked':''}><span>${txt}${sub?`<br><small class="hint">${sub}</small>`:''}</span></label>`;
+ return`<div class="tools">${sel('selEv','ev',names,S.ev)}</div><p class="hint">Modo operação: toque para marcar. As marcações e ocorrências ficam salvas apenas neste aparelho; depois do evento, passe o que importa para a planilha.</p>
+ <div class="box"><h2>Run Sheet</h2>${RN.map((r,i)=>row('r'+i+r.ini+r.acao,`<b>${esc(r.ini)}${r.fim?'–'+esc(r.fim):''}</b> ${esc(r.acao)}`,esc(r.resp),L.c['r'+i+r.ini+r.acao]||done(r.st))).join('')||'<p class="hint">Sem itens (aba RunSheet).</p>'}</div>
+ <div class="box"><h2>Checklist de montagem e operação</h2>${CK.map(t=>row('c'+t.tarefa,esc(t.tarefa),esc(t.fase),L.c['c'+t.tarefa]||done(t.st))).join('')||'<p class="hint">Sem itens de checklist.</p>'}</div>
+ <div class="box"><h2>Registrar ocorrência</h2><div class="tools"><input class="t" id="ol" placeholder="Local"><select id="og" aria-label="Gravidade"><option>Baixa</option><option>Média</option><option>Alta</option></select></div><div class="tools"><input class="t" id="od" placeholder="O que aconteceu e o que foi feito"><button data-oc="1">Registrar</button></div>
+ ${L.o.map(o=>`<div class="al ${o.g=='Alta'?'r':''}"><b>${esc(o.h)}</b> · ${esc(o.g)} · ${esc(o.l)}<br>${esc(o.d)}</div>`).join('')}${L.o.length?'<button data-occ="1">Copiar ocorrências</button>':''}</div>`}
 function comunic(){const names=D.Eventos.map(e=>e.nome);if(!names.length||!D.Modelos.length)return'<div class="box"><p class="hint">Cadastre um evento e confira a aba Modelos da planilha.</p></div>';
- if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),b=D.Briefing.find(x=>x.ev==e.nome)||{},m=D.Modelos[S.mod]||D.Modelos[0];
+ if(!names.includes(S.ev))S.ev=names[0];const e=D.Eventos.find(x=>x.nome==S.ev),b=D.Briefing.find(x=>evOf(x)==nm(e.nome))||{},m=D.Modelos[S.mod]||D.Modelos[0];
  const V2={evento:e.nome,data:br(e.data),horario:b.hor||'[horário]',local:e.local||'[local]',publico:b.pub||'[público]',resp:D.cfg.responsavel||'Bruno',contato:b.ctt||'[contato]',link:b.link||'[link]',prazo:b.prazo||'[prazo]',escola:D.cfg.nome||'Legacy School'};
  const f=s=>String(s||'').replace(/\{(\w+)\}/g,(x,k)=>V2[k]??x);CP=(m.assunto?'Assunto: '+f(m.assunto)+'\n\n':'')+f(m.texto);
  return`<div class="box"><h2>Gerador de comunicação</h2><p class="hint">Escolha o evento e o modelo. Os dados vêm das abas Eventos e Briefing. O que estiver entre [colchetes] você completa antes de enviar.</p><div class="tools">${sel('selEv','ev',names,S.ev)}${sel('selMod','mod',D.Modelos.map(x=>x.nome),S.mod)}<button data-cp="1">Copiar texto</button></div><pre style="white-space:pre-wrap;font:inherit;background:var(--bg);padding:12px;border-radius:6px">${esc(CP)}</pre></div>`}
-const view=()=>cur=='dashboard'?dash():cur=='ficha'?ficha():cur=='comunic'?comunic():table(cur);
-function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
+function ajuda(){const G=[['MAPO','Metodologia de trabalho da casa: finanças, cronograma, execução e riscos num só método.'],['WBS / EAP','Estrutura Analítica do Projeto: dividir o evento em entregas menores e gerenciáveis.'],['SPOC','Single Point of Contact: um único contato interno responsável por cada fornecedor.'],['Run Sheet','Roteiro minuto a minuto do dia do evento, com responsável por cada item.'],['Huddle','Reunião relâmpago de 15 minutos com toda a equipe antes de abrir o evento.'],['D-30, D-7, D-Day','Dias antes do evento. D-Day é o dia; D+7 é uma semana depois.'],['Cronograma reverso','Prazos calculados de trás para frente, a partir da data do evento.'],['NPS / CSAT','Medidas de satisfação do público (recomendação e satisfação, nota de 0 a 10).'],['AVCB','Auto de Vistoria do Corpo de Bombeiros, exigido conforme o local e a lotação.'],['ECAD','Direitos autorais de execução pública de música.'],['LGPD','Lei Geral de Proteção de Dados: cuidado com dados de alunos, menores e famílias.']],
+ P=[['1. Planejar','Defina objetivo, público, orçamento e data. Cadastre na aba Eventos e preencha o Briefing.'],['2. Preparar','Cronograma reverso e checklist geram os prazos sozinhos. Feche fornecedores com SPOC e contrato.'],['3. Executar','Huddle, Run Sheet e o modo Dia D no celular. Registre ocorrências na hora.'],['4. Aprender','Preencha Resultados, calcule o custo por participante e registre as lições aprendidas.']];
+ return`<div class="box"><h2>Guia rápido</h2>${P.map(p=>`<p><b>${p[0]}</b> — ${p[1]}</p>`).join('')}<p class="hint">Regra de ouro da planilha: nunca insira colunas no meio; novas colunas sempre no fim.</p></div><div class="box"><h2>Glossário</h2>${G.map(g=>`<p><b>${g[0]}</b> — ${g[1]}</p>`).join('')}</div>`}
+const view=()=>({dashboard:dash,ficha,comunic,diad,ajuda}[cur]||(()=>table(cur)))();
+function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" aria-label="Link da planilha" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
 function draw(){head();nav();const m=document.getElementById('m');
  if(!ID){m.innerHTML=setup();return}
  m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?view():'')}
-document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw()}
- if(t.dataset.go){S.ev=t.dataset.go;cur='ficha';draw()}
+document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw();scrollTo(0,0)}
+ if(t.dataset.go){S.ev=t.dataset.go;cur='ficha';draw();scrollTo(0,0)}
  if(t.dataset.cp){(navigator.clipboard?navigator.clipboard.writeText(CP):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Selecione e copie manualmente'})}
+ if(t.dataset.oc){const k=nm(S.ev),L=LS(k),d=document.getElementById('od').value.trim();if(d){L.o.unshift({h:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),l:document.getElementById('ol').value.trim()||'—',g:document.getElementById('og').value,d});SV(k,L);keep()}}
+ if(t.dataset.occ){const L=LS(nm(S.ev)),x=L.o.map(o=>`${o.h} · ${o.g} · ${o.l} · ${o.d}`).join('\n');(navigator.clipboard?navigator.clipboard.writeText(x):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Não consegui copiar'})}
  if(t.id=='go'){const m=document.getElementById('lk').value.match(/\/d\/([\w-]+)/)||[0,document.getElementById('lk').value.trim()];if(m[1]){ID=m[1];localStorage.setItem('sheetId',ID);load()}}});
-document.addEventListener('change',e=>{const t=e.target;if(t.dataset.s){S[t.dataset.s]=t.dataset.s=='mod'?+t.value:t.value;draw()}});
+document.addEventListener('change',e=>{const t=e.target;
+ if(t.dataset.ck){const k=nm(S.ev),L=LS(k);L.c[t.dataset.ck]=t.checked;SV(k,L);keep()}
+ else if(t.dataset.s){S[t.dataset.s]=t.dataset.s=='mod'?+t.value:t.value;draw()}});
 rf.onclick=()=>ID&&load();
 chg.onclick=()=>{localStorage.removeItem('sheetId');ID='';D=null;msg='';draw()};
 try{const c=localStorage.getItem('cache-'+ID);if(c)D=JSON.parse(c)}catch(e){}
-draw();if(ID){load();setInterval(load,3e5)}
+draw();if(ID){load();setInterval(()=>load(true),3e5)}
+if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
 </script></body></html>
