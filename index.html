@@ -54,7 +54,7 @@ const sim=v=>/^(sim|true|verdadeiro|x|1)$/i.test(String(v).trim());
 const T={Eventos:['nome','data','local','tipo','publico','etapa','resp','nota'],Orcamento:['ev','item','orcado','real','cot'],Fornecedores:['nome','serv','ctt','venc','nota','st','spoc'],Equipes:['ev','nome','func','turno','ctt'],Operacao:['ev','tipo','tarefa','resp','prazo','ok'],Resultados:['ev','pub','sat','custo','lic'],Padrao:['fase','tarefa','dias','tipo','formato'],Briefing:['ev','obj','res','pub','ein','eout','prog','hor','ctt','link','prazo','log','com','apr'],Riscos:['ev','risco','p','i','prev','planob','resp'],Andamento:['ev','item','st','obs'],Modelos:['nome','assunto','texto'],RunSheet:['ev','ini','fim','acao','resp','st']};
 const OPT=['RunSheet'];
 const V={
- dashboard:{t:'Dashboard'},ficha:{t:'Ficha do evento'},
+ dashboard:{t:'Dashboard'},agora:{t:'Guia: o que fazer agora'},ficha:{t:'Ficha do evento'},
  eventos:{t:'Planejamento',tab:'Eventos',c:[['nome','Evento'],['data','Data',r=>br(r.data)],['local','Local'],['tipo','Tipo'],['publico','Público previsto'],['etapa','Etapa'],['resp','Responsável'],['nota','Observações']]},
  orcamento:{t:'Financeiro',tab:'Orcamento',c:[['ev','Evento'],['item','Item'],['orcado','Orçado',r=>fm(n(r.orcado))],['real','Realizado',r=>fm(n(r.real))],['cot','Cotação'],['d','Desvio',r=>{const d=n(r.real)-n(r.orcado);return n(r.orcado)?`<span class="${d>0?'bad':'ok'}">${d>0?'+':''}${fm(d)}</span>`:'—'}]]},
  fornecedores:{t:'Fornecedores',tab:'Fornecedores',c:[['nome','Fornecedor'],['serv','Serviço'],['ctt','Contato'],['spoc','SPOC (contato interno)'],['venc','Contrato vence em',r=>br(r.venc)],['nota','Avaliação'],['st','Status']]},
@@ -85,7 +85,7 @@ async function load(silent){if(!silent){msg='Carregando…';draw()}
   ent.forEach(([tab],i)=>out[tab]=res[i]);out.at=new Date().toLocaleString('pt-BR');
   const same=JSON.stringify({...D,at:0})==JSON.stringify({...out,at:0});
   D=out;msg='';try{localStorage.setItem('cache-'+ID,JSON.stringify(out))}catch(e){}
-  if(!silent||!same)keep();else head()}
+  if(!silent||!same)keep();else head();notif()}
  catch(e){const c=localStorage.getItem('cache-'+ID);if(c){D=JSON.parse(c);msg='Sem conexão com a planilha ('+e.message+'). Mostrando a última atualização ('+D.at+').'}else{D=null;msg='Não consegui ler a planilha: '+e.message+'.'}
   if(!silent||!D)draw()}}
 function head(){const c=D?.cfg||{},l=document.getElementById('logo');
@@ -157,13 +157,36 @@ function comunic(){const names=D.Eventos.map(e=>e.nome);if(!names.length||!D.Mod
 function ajuda(){const G=[['MAPO','Metodologia de Alta Performance Organizacional: o método de gestão criado para este sistema, reunindo finanças, cronograma, execução e riscos.'],['WBS / EAP','Estrutura Analítica do Projeto: dividir o evento em entregas menores e gerenciáveis.'],['SPOC','Single Point of Contact: um único contato interno responsável por cada fornecedor.'],['Run Sheet','Roteiro minuto a minuto do dia do evento, com responsável por cada item.'],['Huddle','Reunião relâmpago de 15 minutos com toda a equipe antes de abrir o evento.'],['D-30, D-7, D-Day','Dias antes do evento. D-Day é o dia; D+7 é uma semana depois.'],['Cronograma reverso','Prazos calculados de trás para frente, a partir da data do evento.'],['NPS / CSAT','Medidas de satisfação do público (recomendação e satisfação, nota de 0 a 10).'],['AVCB','Auto de Vistoria do Corpo de Bombeiros, exigido conforme o local e a lotação.'],['ECAD','Direitos autorais de execução pública de música.'],['LGPD','Lei Geral de Proteção de Dados: cuidado com dados de alunos, menores e famílias.']],
  P=[['1. Planejar','Defina objetivo, público, orçamento e data. Cadastre na aba Eventos e preencha o Briefing.'],['2. Preparar','Cronograma reverso e checklist geram os prazos sozinhos. Feche fornecedores com SPOC e contrato.'],['3. Executar','Huddle, Run Sheet e o modo Dia D no celular. Registre ocorrências na hora.'],['4. Aprender','Preencha Resultados, calcule o custo por participante e registre as lições aprendidas.']];
  return`<div class="box"><h2>Guia rápido</h2>${P.map(p=>`<p><b>${p[0]}</b> — ${p[1]}</p>`).join('')}<p class="hint">Regra de ouro da planilha: nunca insira colunas no meio; novas colunas sempre no fim.</p></div><div class="box"><h2>Glossário</h2>${G.map(g=>`<p><b>${g[0]}</b> — ${g[1]}</p>`).join('')}</div>`}
-const view=()=>({dashboard:dash,ficha,comunic,diad,ajuda}[cur]||(()=>table(cur)))();
+// Guia de execução: diz a qualquer pessoa o que fazer agora, esta semana e a seguir
+const dif=e=>Math.round((new Date(e.data+'T12:00:00')-new Date(hojeS()+'T12:00:00'))/864e5);
+const fase=d=>d>90?'Conceito':d>21?'Planejamento':d>1?'Preparação final':d==1?'Véspera':d==0?'Dia D':'Pós-evento';
+const DICA={'Conceito':'Defina objetivo, data e orçamento antes de contratar qualquer coisa.','Planejamento':'Feche local, fornecedores e equipe. Peça 3 cotações e registre tudo no Financeiro.','Preparação final':'Confirme tudo: fornecedores, autorizações, comunicação e Run Sheet. Faça o alinhamento com a equipe.','Véspera':'Reconfirme horários, imprima o roteiro e contatos, carregue rádios e celulares.','Dia D':'Huddle de 15 minutos, siga o Run Sheet e anote ocorrências na hora (aba Dia D).','Pós-evento':'Agradeça, lance os custos reais, aplique a pesquisa e registre as lições aprendidas.'};
+function proximo(){const h=hojeS(),up=D.Eventos.filter(e=>e.data&&e.data>=h).sort((a,b)=>a.data.localeCompare(b.data));return up[0]||D.Eventos.filter(e=>e.data).sort((a,b)=>b.data.localeCompare(a.data))[0]||D.Eventos[0]}
+function pend(e){const h=hojeS(),w=iso(new Date(Date.now()+7*864e5)),P=tasks(e).filter(t=>!done(t.st)&&t.prazo).sort((a,b)=>a.prazo.localeCompare(b.prazo));
+ return{A:P.filter(t=>t.prazo<h),H:P.filter(t=>t.prazo==h),W:P.filter(t=>t.prazo>h&&t.prazo<=w),N:P.filter(t=>t.prazo>w).slice(0,5)}}
+function banner(){if(cur=='agora'||!D||!D.Eventos.length)return'';const e=proximo();if(!e||!e.data)return'';const{A,H,W}=pend(e),t=A[0]||H[0]||W[0];
+ return t?`<div class="al ${A.length?'r':''}"><b>${esc(e.nome)}:</b> ${A.length?A.length+' atrasada(s). ':''}Próxima ação: ${esc(t.tarefa)} (${br(t.prazo)}) <button data-m="agora">Abrir guia</button></div>`:''}
+function agora(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<div class="box"><p class="hint">Cadastre um evento na aba Eventos da planilha.</p></div>';
+ if(!names.includes(S.ev))S.ev=proximo().nome;const e=D.Eventos.find(x=>x.nome==S.ev);
+ if(!e.data)return`<div class="tools">${sel('selEv','ev',names,S.ev)}</div><div class="box"><p class="hint">Informe a data do evento na aba Eventos para o guia calcular os prazos.</p></div>`;
+ const d=dif(e),F=fase(d),{A,H,W,N}=pend(e),hs=new Date().toTimeString().slice(0,5),RN=D.RunSheet.filter(x=>evOf(x)==nm(e.nome)).sort((a,b)=>String(a.ini).localeCompare(String(b.ini))).filter(x=>!done(x.st)&&String(x.ini)>=hs)[0];
+ const blk=(tt,c,a,vz)=>`<div class="box"><h2 class="${c}">${tt} (${a.length})</h2>${a.map(t=>`<div class="al ${c=='bad'?'r':''}"><b>${esc(t.tarefa)}</b><br><span class="hint">${esc(t.fase)} · prazo ${br(t.prazo)}</span></div>`).join('')||`<p class="hint">${vz}</p>`}</div>`;
+ const ntOk='Notification' in window&&Notification.permission=='granted';
+ return`<div class="tools">${sel('selEv','ev',names,S.ev)}</div>
+ <div class="box"><h2>${esc(e.nome)}</h2><p><b>${d>0?'Faltam '+d+' dia(s)':d==0?'Hoje é o dia do evento!':'Evento encerrado há '+(-d)+' dia(s)'}</b> · Fase: <b>${F}</b></p><p>${DICA[F]}</p>${pg(tasks(e))}</div>
+ ${d==0&&RN?`<div class="al"><b>Próximo no roteiro:</b> ${esc(RN.ini)} ${esc(RN.acao)} (${esc(RN.resp)||'—'}) <button data-m="diad">Abrir Dia D</button></div>`:''}
+ ${blk('Atrasadas','bad',A,'Nada atrasado. Ótimo!')}${blk('Para hoje','wn',H,'Nada com prazo hoje.')}${blk('Nos próximos 7 dias','',W,'Nada previsto para esta semana.')}${blk('Em seguida','',N,'Sem itens futuros pendentes.')}
+ <div class="box"><h2>Avisos</h2><p class="hint">O guia confere os prazos a cada abertura e a cada 5 minutos. ${ntOk?'Avisos do navegador ativados neste aparelho.':'Ative para receber um aviso por dia com o que está atrasado ou vence hoje.'}</p>${ntOk||!('Notification' in window)?'':'<button data-nt="1">Ativar avisos neste aparelho</button>'}</div>`}
+function notif(){if(!D||!('Notification' in window)||Notification.permission!='granted')return;const k='nt-'+hojeS();if(localStorage.getItem(k))return;const e=proximo();if(!e||!e.data)return;const{A,H}=pend(e);
+ if(A.length||H.length){try{new Notification('Gestão de Eventos – '+e.nome,{body:`${A.length} atrasada(s) e ${H.length} com prazo hoje. Abra o guia para ver o que fazer.`});localStorage.setItem(k,1)}catch(x){}}}
+const view=()=>({dashboard:dash,agora,ficha,comunic,diad,ajuda}[cur]||(()=>table(cur)))();
 function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" aria-label="Link da planilha" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
 function draw(){head();nav();const m=document.getElementById('m');
  if(!ID){m.innerHTML=setup();return}
- m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?view():'')}
+ m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?banner()+view():'')}
 document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw();scrollTo(0,0)}
  if(t.dataset.go){S.ev=t.dataset.go;cur='ficha';draw();scrollTo(0,0)}
+ if(t.dataset.nt){Notification.requestPermission().then(()=>{notif();keep()})}
  if(t.dataset.cp){(navigator.clipboard?navigator.clipboard.writeText(CP):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Selecione e copie manualmente'})}
  if(t.dataset.oc){const k=nm(S.ev),L=LS(k),d=document.getElementById('od').value.trim();if(d){L.o.unshift({h:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),l:document.getElementById('ol').value.trim()||'—',g:document.getElementById('og').value,d});SV(k,L);keep()}}
  if(t.dataset.occ){const L=LS(nm(S.ev)),x=L.o.map(o=>`${o.h} · ${o.g} · ${o.l} · ${o.d}`).join('\n');(navigator.clipboard?navigator.clipboard.writeText(x):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Não consegui copiar'})}
