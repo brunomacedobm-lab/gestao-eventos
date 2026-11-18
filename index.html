@@ -37,7 +37,7 @@ label.dd{display:flex;gap:10px;align-items:flex-start;padding:10px 4px;border-to
 <h1 id="ttl">Gestão de Eventos<small id="sub"></small></h1>
 <button id="rf">Atualizar</button><button onclick="print()">Imprimir</button></header>
 <nav id="nav" aria-label="Módulos"></nav><main id="m"></main>
-<footer><button id="chg">Trocar planilha conectada</button></footer>
+<footer><button id="chg">Sair / trocar conexão</button></footer>
 <script>
 const p2=v=>String(v).padStart(2,'0'),iso=d=>`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
 const hojeS=()=>iso(new Date());
@@ -65,11 +65,16 @@ const V={
  resultados:{t:'Resultados',tab:'Resultados',c:[['ev','Evento'],['pub','Público real'],['sat','Satisfação'],['custo','Custo total',r=>fm(n(r.custo))],['cpp','Custo por participante',r=>n(r.pub)?fm(n(r.custo)/n(r.pub)):'—'],['lic','Lições aprendidas']]},
  ajuda:{t:'Ajuda'}
 };
-let D=null,cur='dashboard',ID=localStorage.getItem('sheetId')||'',msg='',CP='';
+let D=null,cur='dashboard',ID=localStorage.getItem('sheetId')||'',msg='',CP='',ALL=null,ROLE='';
+let API=null;try{API=JSON.parse(localStorage.getItem('api')||'null')}catch(e){}
+if(!API&&ID=='api')ID='';
 const S={ev:'',evf:'',mod:0};
 function csv(){}
 let seq=0;
-function jq(tab){return new Promise((ok,no)=>{const f='gv'+(++seq)+Date.now(),sc=document.createElement('script');
+function japi(a,x){return new Promise((ok,no)=>{const f='ga'+(++seq)+Date.now(),sc=document.createElement('script'),end=()=>{delete window[f];sc.remove()};
+ window[f]=o=>{end();o.erro?no(new Error(o.erro)):ok(o)};sc.onerror=()=>{end();no(new Error('não consegui falar com o servidor (Apps Script). Confira o endereço e a conexão'))};
+ sc.src=`${API.url}?cb=${f}&t=${encodeURIComponent(API.t)}&a=${a||'read'}${x||''}&_=${Date.now()}`;document.head.appendChild(sc)})}
+function jq(tab){if(API)return Promise.resolve((ALL&&ALL[tab])||[]);return new Promise((ok,no)=>{const f='gv'+(++seq)+Date.now(),sc=document.createElement('script');
  const end=()=>{delete window[f];sc.remove()};
  window[f]=o=>{end();if(o.status!='ok'){no(new Error('o Google recusou a aba "'+tab+'": '+((o.errors||[{}])[0].detailed_message||(o.errors||[{}])[0].message||'erro desconhecido')));return}
   ok(o.table.rows.map(r=>(r.c||[]).map(c=>{if(!c||c.v==null)return'';return(typeof c.v=='string'&&/^Date\(/.test(c.v))?(c.f||''):c.v})))};
@@ -80,6 +85,7 @@ const rd=async(tab,keys)=>(await jq(tab)).filter(r=>r.some(x=>String(x).trim()))
 const keep=()=>{const y=scrollY;draw();scrollTo(0,y)};
 async function load(silent){if(!silent){msg='Carregando…';draw()}
  try{const out={cfg:{}};
+  if(API){const r=await japi();ALL=r.dados;ROLE=out.role=r.role}
   (await jq('Config')).forEach(r=>{if(r[0])out.cfg[String(r[0]).trim()]=String(r[1]??'').trim()});
   const ent=Object.entries(T),res=await Promise.all(ent.map(([tab,k])=>rd(tab,k).catch(e=>{if(OPT.includes(tab))return[];throw e})));
   ent.forEach(([tab],i)=>out[tab]=res[i]);out.at=new Date().toLocaleString('pt-BR');
@@ -92,7 +98,7 @@ function head(){const c=D?.cfg||{},l=document.getElementById('logo');
  let g=c.logo||'logo.png';const m=g.match(/\/d\/([\w-]+)|[?&]id=([\w-]+)/);if(m&&/drive\.google/.test(g))g=`https://drive.google.com/thumbnail?id=${m[1]||m[2]}&sz=w400`;
  l.style.display='block';if(l.getAttribute('src')!=g)l.src=g;l.onerror=()=>l.style.display='none';
  const nome=c.nome||'Legacy School';document.getElementById('ttl').firstChild.nodeValue='Gestão de Eventos – '+nome;
- document.getElementById('sub').textContent='Responsável: '+(c.responsavel||'Bruno')+(D?.at?' · atualizado em '+D.at:'');document.title='Gestão de Eventos – '+nome}
+ document.getElementById('sub').textContent='Responsável: '+(c.responsavel||'Bruno')+(D?.at?' · atualizado em '+D.at:'')+(D?.role?' · acesso: '+D.role:'');document.title='Gestão de Eventos – '+nome}
 function nav(){document.getElementById('nav').innerHTML=Object.entries(V).map(([k,v])=>`<button class="${k==cur?'on':''}" data-m="${k}" ${k==cur?'aria-current="page"':''}>${v.t}</button>`).join('')}
 const evOf=r=>nm(r.ev);
 function fbar(){const names=D.Eventos.map(e=>e.nome);return`<div class="tools"><select data-s="evf" aria-label="Filtrar por evento"><option value="">Todos os eventos</option>${names.map(x=>`<option value="${esc(x)}" ${x==S.evf?'selected':''}>${esc(x)}</option>`).join('')}</select></div>`}
@@ -100,7 +106,7 @@ function table(k){const v=V[k];let rows=(D[v.tab]||[]).filter(r=>!S.evf||v.tab==
  if(v.sort)rows=[...rows].sort((a,b)=>String(a[v.sort]).localeCompare(String(b[v.sort])));
  return`${fbar()}<div class="box"><h2>${v.t}</h2><p class="hint">Somente leitura. Para alterar, edite a aba "${v.tab}" na planilha e clique em Atualizar.</p><div class="w"><table><thead><tr>${v.c.map(c=>`<th>${c[1]}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${v.c.map(c=>`<td>${c[2]?c[2](r):esc(r[c[0]])}</td>`).join('')}</tr>`).join('')||'<tr><td class="hint">Nada cadastrado nesta aba.</td></tr>'}</tbody></table></div></div>`}
 function tasks(e){const k=nm(e.nome),A=D.Andamento.filter(a=>evOf(a)==k),f=nm(e.tipo);
- const b=D.Padrao.filter(p=>!p.formato||f.includes(nm(p.formato))).map(p=>{const a=A.find(x=>nm(x.item)==nm(p.tarefa));return{fase:p.fase,tarefa:p.tarefa,tipo:p.tipo,prazo:addD(e.data,p.dias),st:a?(a.st||'Pendente'):'Pendente'}});
+ const b=D.Padrao.filter(p=>!p.formato||f.includes(nm(p.formato))).map(p=>{const a=A.find(x=>nm(x.item)==nm(p.tarefa));return{fase:p.fase,tarefa:p.tarefa,tipo:p.tipo,prazo:addD(e.data,p.dias),st:a?(a.st||'Pendente'):'Pendente',pad:1}});
  const x=D.Operacao.filter(o=>evOf(o)==k).map(o=>({fase:o.tipo||'Extra',tarefa:o.tarefa,tipo:'Checklist',prazo:o.prazo,st:o.ok?'Concluída':'Pendente'}));return b.concat(x)}
 const late=t=>!done(t.st)&&t.prazo&&t.prazo<hojeS();
 const stH=t=>done(t.st)?'<span class="ok">Concluída</span>':(late(t)?`<span class="bad">${esc(t.st)} · atrasada</span>`:esc(t.st));
@@ -170,7 +176,7 @@ function agora(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<d
  if(!names.includes(S.ev))S.ev=proximo().nome;const e=D.Eventos.find(x=>x.nome==S.ev);
  if(!e.data)return`<div class="tools">${sel('selEv','ev',names,S.ev)}</div><div class="box"><p class="hint">Informe a data do evento na aba Eventos para o guia calcular os prazos.</p></div>`;
  const d=dif(e),F=fase(d),{A,H,W,N}=pend(e),hs=new Date().toTimeString().slice(0,5),RN=D.RunSheet.filter(x=>evOf(x)==nm(e.nome)).sort((a,b)=>String(a.ini).localeCompare(String(b.ini))).filter(x=>!done(x.st)&&String(x.ini)>=hs)[0];
- const blk=(tt,c,a,vz)=>`<div class="box"><h2 class="${c}">${tt} (${a.length})</h2>${a.map(t=>`<div class="al ${c=='bad'?'r':''}"><b>${esc(t.tarefa)}</b><br><span class="hint">${esc(t.fase)} · prazo ${br(t.prazo)}</span></div>`).join('')||`<p class="hint">${vz}</p>`}</div>`;
+ const blk=(tt,c,a,vz)=>`<div class="box"><h2 class="${c}">${tt} (${a.length})</h2>${a.map(t=>`<div class="al ${c=='bad'?'r':''}"><b>${esc(t.tarefa)}</b><br><span class="hint">${esc(t.fase)} · prazo ${br(t.prazo)}</span>${(D.role=='gestor'&&t.pad)?` <button data-dn="${esc(t.tarefa)}">Marcar como concluída</button>`:''}</div>`).join('')||`<p class="hint">${vz}</p>`}</div>`;
  const ntOk='Notification' in window&&Notification.permission=='granted';
  return`<div class="tools">${sel('selEv','ev',names,S.ev)}</div>
  <div class="box"><h2>${esc(e.nome)}</h2><p><b>${d>0?'Faltam '+d+' dia(s)':d==0?'Hoje é o dia do evento!':'Evento encerrado há '+(-d)+' dia(s)'}</b> · Fase: <b>${F}</b></p><p>${DICA[F]}</p>${pg(tasks(e))}</div>
@@ -180,12 +186,15 @@ function agora(){const names=D.Eventos.map(e=>e.nome);if(!names.length)return'<d
 function notif(){if(!D||!('Notification' in window)||Notification.permission!='granted')return;const k='nt-'+hojeS();if(localStorage.getItem(k))return;const e=proximo();if(!e||!e.data)return;const{A,H}=pend(e);
  if(A.length||H.length){try{new Notification('Gestão de Eventos – '+e.nome,{body:`${A.length} atrasada(s) e ${H.length} com prazo hoje. Abra o guia para ver o que fazer.`});localStorage.setItem(k,1)}catch(x){}}}
 const view=()=>({dashboard:dash,agora,ficha,comunic,diad,ajuda}[cur]||(()=>table(cur)))();
-function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" aria-label="Link da planilha" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>`}
+function setup(){return`<div class="box"><h2>Conectar a planilha</h2><p>Primeiro acesso neste aparelho: cole o link da planilha mestre do Google Sheets (compartilhada como "Qualquer pessoa com o link: Leitor").</p><div class="tools"><input class="l" id="lk" aria-label="Link da planilha" placeholder="https://docs.google.com/spreadsheets/d/…"><button id="go">Conectar</button></div><p class="hint">${esc(msg)}</p></div>
+ <div class="box"><h2>Acesso seguro (recomendado)</h2><p>Com o Apps Script instalado, a planilha fica privada. Cole o endereço do aplicativo da Web e a sua chave de acesso.</p><div class="tools"><input class="l" id="au" aria-label="Endereço do aplicativo da Web" placeholder="https://script.google.com/macros/s/…/exec"><input class="l" id="at" type="password" aria-label="Chave de acesso" placeholder="Chave de acesso"><button id="ga">Entrar</button></div></div>`}
 function draw(){head();nav();const m=document.getElementById('m');
  if(!ID){m.innerHTML=setup();return}
  m.innerHTML=(msg?`<div class="al">${esc(msg)}</div>`:'')+(D?banner()+view():'')}
 document.addEventListener('click',e=>{const t=e.target;if(t.dataset.m){cur=t.dataset.m;draw();scrollTo(0,0)}
  if(t.dataset.go){S.ev=t.dataset.go;cur='ficha';draw();scrollTo(0,0)}
+ if(t.dataset.dn){t.disabled=true;japi('done','&ev='+encodeURIComponent(S.ev)+'&item='+encodeURIComponent(t.dataset.dn)+'&st='+encodeURIComponent('Concluída')).then(()=>load(true)).catch(x=>{msg=x.message;keep()})}
+ if(t.id=='ga'){const u=document.getElementById('au').value.trim(),k=document.getElementById('at').value.trim();if(/^https:\/\/script\.google\.com\//.test(u)&&k){API={url:u,t:k};ID='api';localStorage.setItem('api',JSON.stringify(API));localStorage.setItem('sheetId','api');load()}else{msg='Endereço do Apps Script ou chave inválidos.';draw()}}
  if(t.dataset.nt){Notification.requestPermission().then(()=>{notif();keep()})}
  if(t.dataset.cp){(navigator.clipboard?navigator.clipboard.writeText(CP):Promise.reject()).then(()=>{t.textContent='Copiado!'},()=>{t.textContent='Selecione e copie manualmente'})}
  if(t.dataset.oc){const k=nm(S.ev),L=LS(k),d=document.getElementById('od').value.trim();if(d){L.o.unshift({h:new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),l:document.getElementById('ol').value.trim()||'—',g:document.getElementById('og').value,d});SV(k,L);keep()}}
@@ -195,7 +204,7 @@ document.addEventListener('change',e=>{const t=e.target;
  if(t.dataset.ck){const k=nm(S.ev),L=LS(k);L.c[t.dataset.ck]=t.checked;SV(k,L);keep()}
  else if(t.dataset.s){S[t.dataset.s]=t.dataset.s=='mod'?+t.value:t.value;draw()}});
 rf.onclick=()=>ID&&load();
-chg.onclick=()=>{localStorage.removeItem('sheetId');ID='';D=null;msg='';draw()};
+chg.onclick=()=>{localStorage.removeItem('sheetId');localStorage.removeItem('api');API=null;ALL=null;ROLE='';ID='';D=null;msg='';draw()};
 try{const c=localStorage.getItem('cache-'+ID);if(c)D=JSON.parse(c)}catch(e){}
 draw();if(ID){load();setInterval(()=>load(true),3e5)}
 if('serviceWorker' in navigator)navigator.serviceWorker.register('sw.js').catch(()=>{});
